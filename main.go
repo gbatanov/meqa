@@ -16,42 +16,29 @@ import (
 	"gopkg.in/resty.v1"
 )
 
-const VERSION = "v0.1.2"
+const VERSION = "v0.1.3"
 
 const (
-	meqaDataDir = "meqa_data"
-	resultFile  = "result.yml"
-	serverURL   = ""
+	MeqaDataDir = "meqa_data"
+	ResultFile  = "result.yml"
+	SwaggerFile = "swagger.yaml"
+	ServerURL   = ""
 )
 
 func main() {
-	genCommand := flag.NewFlagSet("gen", flag.ExitOnError)
-	genCommand.SetOutput(os.Stdout)
-	runCommand := flag.NewFlagSet("run", flag.ExitOnError)
-	runCommand.SetOutput(os.Stdout)
 
-	genMeqaPath := genCommand.String("d", meqaDataDir, "the directory where meqa config, log and output files reside")
-	genSwaggerFile := genCommand.String("s", "", "the OpenAPI (Swagger) spec file path")
-	algorithm := genCommand.String("a", "all", "the algorithm - simple, path, all")
-	genVerbose := genCommand.Bool("v", false, "turn on verbose mode")
-
-	runMeqaPath := runCommand.String("d", meqaDataDir, "the directory where meqa config, log and output files reside")
-	runSwaggerFile := runCommand.String("s", "", "the meqa generated OpenAPI (Swagger) spec file path")
-	testPlanFile := runCommand.String("p", "", "the test plan file name")
-	resultPath := runCommand.String("r", "result.yml", "the test result file name (default result.yml in meqa_data dir)")
-	testToRun := runCommand.String("t", "all", "the test to run")
-	username := runCommand.String("u", "", "the username for basic HTTP authentication")
-	password := runCommand.String("w", "", "the password for basic HTTP authentication")
-	apitoken := runCommand.String("a", "", "the api token for bearer HTTP authentication")
-	verbose := runCommand.Bool("v", false, "turn on verbose mode")
+	meqaPath := flag.String("d", MeqaDataDir, "the directory where meqa log and output files reside")
+	swaggerFile := flag.String("s", SwaggerFile, "the OpenAPI (Swagger) spec file path")
+	verbose := flag.Bool("v", false, "turn on verbose mode")
+	resultPath := flag.String("r", ResultFile, "the test result file name")
+	username := flag.String("u", "", "the username for basic HTTP authentication")
+	password := flag.String("w", "", "the password for basic HTTP authentication")
+	apitoken := flag.String("t", "", "the api token for bearer HTTP authentication")
 
 	flag.Usage = func() {
-		fmt.Println("Usage: mqgo {gen|run} [options]")
+		fmt.Println("Usage: mqgo [options]")
 		fmt.Println("generate: generate test plans to be used by run command")
-		genCommand.PrintDefaults()
-
-		fmt.Println("\nrun: run the tests the in a test plan file")
-		runCommand.PrintDefaults()
+		flag.PrintDefaults()
 	}
 
 	if len(os.Args) < 2 {
@@ -59,24 +46,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	var meqaPath *string
-	var swaggerFile *string
-	runType := ""
-	switch os.Args[1] {
-	case "gen":
-		genCommand.Parse(os.Args[2:])
-		meqaPath = genMeqaPath
-		swaggerFile = genSwaggerFile
-		runType = "gen"
-	case "run":
-		runCommand.Parse(os.Args[2:])
-		meqaPath = runMeqaPath
-		swaggerFile = runSwaggerFile
-		runType = "run"
-	default:
-		flag.Usage()
-		os.Exit(1)
-	}
+	flag.Parse()
+
+	algorithm := "path"
+
 	if len(*swaggerFile) == 0 {
 		fmt.Println("You must use -s option to provide a swagger/openapi yaml spec file. Use -h to see the options")
 		os.Exit(1)
@@ -91,12 +64,11 @@ func main() {
 		fmt.Printf("Meqa directory %s is not a directory.", *meqaPath)
 		os.Exit(1)
 	}
+	testPlanFile := filepath.Join(*meqaPath, algorithm+".yml")
 
-	if runType == "run" {
-		if len(*resultPath) == 0 {
-			rf := filepath.Join(*meqaPath, resultFile)
-			resultPath = &rf
-		}
+	if len(*resultPath) == 0 {
+		rf := filepath.Join(*meqaPath, ResultFile)
+		resultPath = &rf
 	}
 
 	mqutil.Logger = mqutil.NewFileLogger(filepath.Join(*meqaPath, "mqgo.log"))
@@ -107,16 +79,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	if runType == "gen" && genCommand.Parsed() {
-		err = mqgen.Run(meqaPath, swaggerFile, algorithm, genVerbose)
+	err = mqgen.Run(meqaPath, swaggerFile, &algorithm, verbose)
 
-		if err != nil {
-			fmt.Printf("got an err:\n%s", err.Error())
-		}
+	if err != nil {
+		fmt.Printf("got an err:\n%s", err.Error())
 		return
-	} else if runType == "run" {
-		runMeqa(meqaPath, swaggerFile, testPlanFile, resultPath, testToRun, username, password, apitoken, verbose)
 	}
+	testToRun := "all"
+	runMeqa(meqaPath, swaggerFile, &testPlanFile, resultPath, &testToRun, username, password, apitoken, verbose)
 
 }
 

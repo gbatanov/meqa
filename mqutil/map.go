@@ -41,7 +41,7 @@ func MapInterfaceToMapString(src map[string]interface{}) map[string]string {
 
 // MapIsCompatible checks if the first map has every key in the second.
 func MapIsCompatible(big map[string]interface{}, small map[string]interface{}) bool {
-	for k, _ := range small {
+	for k := range small {
 		if _, ok := big[k]; !ok {
 			return false
 		}

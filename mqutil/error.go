@@ -55,8 +55,7 @@ func (e *TypedError) TypeString() string {
 }
 
 func NewError(errType int, str string) error {
-	buf := "" //string(debug.Stack())
 	err := TypedError{errType, ""}
-	err.errMsg = fmt.Sprintf("==== %s ====\nError message:\n%s\nBacktrace:%v", err.TypeString(), str, buf)
+	err.errMsg = fmt.Sprintf("==== %s ====\nError message:\n%s\n", err.TypeString(), str)
 	return &err
 }
