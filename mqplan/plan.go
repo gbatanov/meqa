@@ -3,7 +3,6 @@ package mqplan
 import (
 	"errors"
 	"fmt"
-	"log"
 	"math/rand"
 	"os"
 	"strings"
@@ -105,6 +104,7 @@ type TestPlan struct {
 	SuiteList [](*TestSuite)
 	db        *mqswag.DB
 	swagger   *mqswag.Swagger
+	Host      string // Если хост не прописан в swagger.yaml
 
 	// global parameters
 	TestParams `yaml:",inline,omitempty" json:",inline,omitempty"`
@@ -249,7 +249,13 @@ func (plan *TestPlan) LogErrors() {
 		if t.responseError != nil {
 			fmt.Print(mqutil.RED)
 			fmt.Println("Response Status Code:", t.resp.StatusCode())
-			fmt.Println(t.responseError)
+			if len(t.responseError.(*resty.Response).Body()) < 120 {
+				fmt.Println(t.responseError)
+			} else {
+				re := string([]byte(t.responseError.(*resty.Response).Body())[0:120])
+				re = re + "..."
+				fmt.Println(re)
+			}
 			fmt.Print(mqutil.END)
 		}
 		/*
@@ -289,7 +295,7 @@ func (plan *TestPlan) Init(swagger *mqswag.Swagger, db *mqswag.DB) {
 
 // Run a named TestSuite in the test plan.
 func (plan *TestPlan) Run(name string, parentTest *Test) (map[string]int, error) {
-	log.Println("name: ", name)
+	var err error
 	tc, ok := plan.SuiteMap[name]
 	resultCounts := make(map[string]int)
 	if !ok || len(tc.Tests) == 0 {
@@ -297,7 +303,7 @@ func (plan *TestPlan) Run(name string, parentTest *Test) (map[string]int, error)
 		mqutil.Logger.Println(str)
 		return resultCounts, errors.New(str)
 	}
-	log.Println("tc.Name: ", tc.Name)
+
 	tc.db = plan.db.CloneSchema()
 	defer func() {
 		tc.db = nil
@@ -305,6 +311,7 @@ func (plan *TestPlan) Run(name string, parentTest *Test) (map[string]int, error)
 	resultCounts[mqutil.Total] = len(tc.Tests)
 	resultCounts[mqutil.Failed] = 0
 	for _, test := range tc.Tests {
+
 		if len(test.Ref) != 0 {
 			test.Strict = tc.Strict
 			resultCounts, err := plan.Run(test.Ref, test)
@@ -331,7 +338,7 @@ func (plan *TestPlan) Run(name string, parentTest *Test) (map[string]int, error)
 		if parentTest != nil {
 			dup.Name = parentTest.Name // always inherit the name
 		}
-		err := dup.Run(tc)
+		err = dup.Run(tc)
 		dup.err = err
 		plan.resultList = append(plan.resultList, dup)
 		if dup.schemaError != nil {
@@ -339,12 +346,11 @@ func (plan *TestPlan) Run(name string, parentTest *Test) (map[string]int, error)
 		}
 		if err != nil {
 			resultCounts[mqutil.Failed]++
-			resultCounts[mqutil.Skipped] = len(tc.Tests) - resultCounts[mqutil.Passed] - 1
-			return resultCounts, err
+		} else {
+			resultCounts[mqutil.Passed]++
 		}
-		resultCounts[mqutil.Passed]++
 	}
-	return resultCounts, nil
+	return resultCounts, err
 }
 
 // The current global TestPlan

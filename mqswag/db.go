@@ -76,9 +76,9 @@ func (schema *Schema) Parses(name string, object interface{}, collection map[str
 	raiseError := func(msg string) error {
 		schemaBytes, _ := json.MarshalIndent((*spec.Schema)(schema), "", "    ")
 		objectBytes, _ := json.MarshalIndent(object, "", "    ")
-		return errors.New(fmt.Sprintf(
-			"schema and object don't match - %s\nSchema:\n%s\nObject:\n%s\n",
-			msg, string(schemaBytes), string(objectBytes)))
+		return fmt.Errorf(
+			"schema and object don't match - %s\nSchema:\n%s\nObject:\n%s",
+			msg, string(schemaBytes), string(objectBytes))
 	}
 	if object == nil {
 		return nil

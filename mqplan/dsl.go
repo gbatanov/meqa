@@ -466,27 +466,29 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 	}
 	// success based on return status
 	success := (status >= 200 && status < 300)
-	tag := mqswag.GetMeqaTag(respSpec.Description)
-	if tag != nil && tag.Flags&mqswag.FlagFail != 0 {
-		success = false
-	}
-
+	/*
+		// TODO: Добавить тэги в генератор
+			tag := mqswag.GetMeqaTag(respSpec.Description)
+			if tag != nil && tag.Flags&mqswag.FlagFail != 0 {
+				success = false
+			}
+	*/
 	testSuccess := success
-	var expectedStatus interface{} = "success"
-	if t.Expect != nil && t.Expect[ExpectStatus] != nil {
-		expectedStatus = t.Expect[ExpectStatus]
-		if expectedStatus == "fail" {
-			testSuccess = !success
-		} else if expectedStatusNum, ok := expectedStatus.(int); ok {
-			testSuccess = (expectedStatusNum == status)
+	/*
+		var expectedStatus interface{} = "success"
+		if t.Expect != nil && t.Expect[ExpectStatus] != nil {
+			expectedStatus = t.Expect[ExpectStatus]
+			if expectedStatus == "fail" {
+				testSuccess = !success
+			} else if expectedStatusNum, ok := expectedStatus.(int); ok {
+				testSuccess = (expectedStatusNum == status)
+			}
 		}
-	}
-
+	*/
 	greenSuccess := fmt.Sprintf("%vSuccess%v", mqutil.GREEN, mqutil.END)
 	redFail := fmt.Sprintf("%vFail%v", mqutil.RED, mqutil.END)
 	yellowFail := fmt.Sprintf("%vFail%v", mqutil.YELLOW, mqutil.END)
 	if testSuccess {
-		fmt.Printf("... expecting status: %v got status: %d. %v\n", expectedStatus, status, greenSuccess)
 		if t.Expect != nil && t.Expect[ExpectBody] != nil {
 			testSuccess = mqutil.InterfaceEquals(t.Expect[ExpectBody], resultObj)
 			if testSuccess {
@@ -503,9 +505,10 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 		}
 	} else {
 		t.responseError = resp
-		fmt.Printf("... expecting status: %v got status: %d. %v\n", expectedStatus, status, redFail)
+		fmt.Printf("... got status: %d. %v\n", status, redFail)
 		setExpect()
-		return mqutil.NewError(mqutil.ErrExpect, fmt.Sprintf("=== test failed, response code %d ===", status))
+		err := mqutil.NewError(mqutil.ErrExpect, fmt.Sprintf("=== test failed, response code %d ===", status))
+		return err
 	}
 
 	// Check if the response obj and respSchema match
@@ -570,11 +573,12 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 			}
 		}
 	}
-	if expectedStatus != "success" {
-		setExpect()
-		return nil
-	}
-
+	/*
+		if expectedStatus != "success" {
+			setExpect()
+			return nil
+		}
+	*/
 	// Sometimes the server will return more data than requested. For instance, the server may generate
 	// a uuid that the client didn't send. So for post and puts, we first go through the collection.
 	// The assumption is that if the server returned an object of matching type, we should use that
@@ -813,7 +817,6 @@ func (t *Test) Run(tc *TestSuite) error {
 		t.err = mqutil.NewError(mqutil.ErrHttp, err.Error())
 	} else {
 		mqutil.Logger.Print(resp.Status())
-		mqutil.Logger.Println(string(resp.Body()))
 	}
 	err = t.ProcessResult(resp)
 	return err

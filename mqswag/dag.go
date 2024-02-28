@@ -42,20 +42,23 @@ func (node *DAGNode) GetMethod() string {
 }
 
 // AdjustWeight changes the children's weight to be at least this node's weight + 1
-func (node *DAGNode) AdjustChildrenWeight(depList []*DAGNode) error {
+func (node *DAGNode) AdjustChildrenWeight(depList *[]*DAGNode) error {
+	if len(*depList) == 0 {
+		return mqutil.NewError(mqutil.ErrInvalid, "empty depList")
+	}
 	// detect circular dependency
-	for i, n := range depList {
+	for i, n := range *depList {
 		if node == n {
 			str := "Circular dependency detected (top depends on bottom):"
-			for j := i; j < len(depList); j++ {
-				str = str + "\n\t" + depList[j].ToString()
+			for j := i; j < len(*depList); j++ {
+				str = str + "\n\t" + (*depList)[j].ToString()
 			}
 			str = str + "\n\t" + node.ToString() + "\n"
 			return mqutil.NewError(mqutil.ErrInvalid, str)
 		}
 	}
 	// Add this node to the chain
-	depList = append(depList, node)
+	*depList = append(*depList, node)
 	for _, c := range node.Children {
 		if c.Weight <= node.Weight {
 			err := node.dag.AdjustNodeWeight(c, node.Weight+1, depList)
@@ -65,7 +68,7 @@ func (node *DAGNode) AdjustChildrenWeight(depList []*DAGNode) error {
 		}
 	}
 	// pop this node out of the chain
-	depList = depList[:len(depList)-1]
+	*depList = (*depList)[:len(*depList)-1]
 	return nil
 }
 
@@ -99,7 +102,7 @@ func (node *DAGNode) AddChild(child *DAGNode) error {
 // AddDependencies adds the nodes named in the tags map either as child or parent of this node
 func (node *DAGNode) AddDependencies(dag *DAG, tags map[string]interface{}, asChild bool) error {
 	var err error
-	for className, _ := range tags {
+	for className := range tags {
 		pNode := dag.NameMap[GetDAGName(TypeDef, className, "")]
 		if pNode == nil {
 			continue
@@ -185,7 +188,7 @@ func (dag *DAG) AddNode(node *DAGNode) error {
 	return nil
 }
 
-func (dag *DAG) AdjustNodeWeight(node *DAGNode, newWeight int, depList []*DAGNode) error {
+func (dag *DAG) AdjustNodeWeight(node *DAGNode, newWeight int, depList *[]*DAGNode) error {
 	if dag.NameMap[node.Name] != node {
 		return mqutil.NewError(mqutil.ErrInvalid, fmt.Sprintf("changing the weight of a node that's not found in dag: %v", node))
 	}
@@ -206,7 +209,7 @@ type DAGIterFunc func(previous *DAGNode, current *DAGNode) error
 
 func (dag *DAG) IterateWeight(weight int, f DAGIterFunc) error {
 	if weight >= DAGDepth {
-		return mqutil.NewError(mqutil.ErrInvalid, fmt.Sprintf("invalid weight to iterate", weight))
+		return mqutil.NewError(mqutil.ErrInvalid, fmt.Sprintf("invalid weight (%d) to iterate", weight))
 	}
 	l := dag.WeightList[weight]
 	for _, n := range l {

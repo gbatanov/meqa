@@ -1,10 +1,8 @@
-// This package handles swagger.json file parsing
+// This package handles swagger.json|swagger.yaml file parsing
 package mqswag
 
 import (
 	"fmt"
-	"io/ioutil"
-
 	"os"
 	"path/filepath"
 	"regexp"
@@ -72,7 +70,7 @@ func GetMeqaTag(desc string) *MeqaTag {
 	if len(desc) == 0 {
 		return nil
 	}
-	re := regexp.MustCompile("<meqa *[/-~\\-]+\\.?[/-~\\-]*\\.?[a-zA-Z]* *[a-zA-Z,]* *>")
+	re := regexp.MustCompile(`<meqa *[/-~\\-]+\\.?[/-~\\-]*\\.?[a-zA-Z]* *[a-zA-Z,]* *>`)
 	ar := re.FindAllString(desc, -1)
 
 	// TODO it's possible that we have multiple choices because the server can't be
@@ -163,13 +161,11 @@ func CreateSwaggerFromURL(path string, meqaPath string) (*Swagger, error) {
 		return nil, err
 	}
 
-	// log.Println("Would be serving:", specDoc.Spec().Info.Title)
-
 	return (*Swagger)(specDoc.Spec()), nil
 }
 
 func GetWhitelistSuites(path string) (map[string]bool, error) {
-	whitelistBytes, err := ioutil.ReadFile(path)
+	whitelistBytes, err := os.ReadFile(path)
 	if err != nil {
 		mqutil.Logger.Printf("can't read file %s", path)
 		return nil, err
@@ -321,8 +317,8 @@ func CollectParamDependencies(params []spec.Parameter, swagger *Swagger, dag *DA
 		collected := dep.CollectFromTag(GetMeqaTag(param.Description))
 
 		if param.Schema != nil {
-			var schema *Schema
-			schema = (*Schema)(param.Schema)
+
+			schema := (*Schema)(param.Schema)
 			if len(collected) == 0 {
 				collected = dep.CollectFromTag(GetMeqaTag(schema.Description))
 			}

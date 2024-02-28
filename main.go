@@ -16,9 +16,10 @@ import (
 	"gopkg.in/resty.v1"
 )
 
-const VERSION = "v0.1.3"
+const VERSION = "v0.1.4"
 
 const (
+	HOST        = "192.168.76.95:8000"
 	MeqaDataDir = "meqa_data"
 	ResultFile  = "result.yml"
 	SwaggerFile = "swagger.yaml"
@@ -26,11 +27,20 @@ const (
 )
 
 func main() {
-
+	/*
+		b, err := os.ReadFile("swagger.yaml")
+		if err == nil {
+			js, err := mqutil.YamlToJson(b)
+			if err == nil {
+				os.WriteFile("swagger_gen.json", js, fs.FileMode(os.O_RDWR))
+			}
+		}
+		os.Exit(1)
+	*/
 	meqaPath := flag.String("d", MeqaDataDir, "the directory where meqa log and output files reside")
 	swaggerFile := flag.String("s", SwaggerFile, "the OpenAPI (Swagger) spec file path")
-	verbose := flag.Bool("v", false, "turn on verbose mode")
-	resultPath := flag.String("r", ResultFile, "the test result file name")
+	verbose := flag.Bool("v", true, "turn on verbose mode")
+	//	resultPath := flag.String("r", ResultFile, "the test result file name")
 	username := flag.String("u", "", "the username for basic HTTP authentication")
 	password := flag.String("w", "", "the password for basic HTTP authentication")
 	apitoken := flag.String("t", "", "the api token for bearer HTTP authentication")
@@ -65,11 +75,8 @@ func main() {
 		os.Exit(1)
 	}
 	testPlanFile := filepath.Join(*meqaPath, algorithm+".yml")
-
-	if len(*resultPath) == 0 {
-		rf := filepath.Join(*meqaPath, ResultFile)
-		resultPath = &rf
-	}
+	rf := filepath.Join(*meqaPath, ResultFile)
+	resultPath := &rf
 
 	mqutil.Logger = mqutil.NewFileLogger(filepath.Join(*meqaPath, "mqgo.log"))
 	mqutil.Logger.Println(os.Args)
@@ -111,7 +118,9 @@ func runMeqa(meqaPath *string, swaggerFile *string, testPlanFile *string, result
 		mqutil.Logger.Printf("Error: %s", err.Error())
 	}
 	mqswag.ObjDB.Init(swagger)
-
+	if len(swagger.Host) == 0 {
+		swagger.Host = HOST
+	}
 	// load test plan
 	mqplan.Current.Username = *username
 	mqplan.Current.Password = *password
@@ -126,28 +135,16 @@ func runMeqa(meqaPath *string, swaggerFile *string, testPlanFile *string, result
 	resty.SetRedirectPolicy(resty.FlexibleRedirectPolicy(15))
 
 	mqplan.Current.ResultCounts = make(map[string]int)
-	if *testToRun == "all" {
-		for _, testSuite := range mqplan.Current.SuiteList {
-			mqutil.Logger.Printf("\n---Test suite: %s\n", testSuite.Name)
-			fmt.Printf("\n---Test suite: %s\n", testSuite.Name)
-			counts, err := mqplan.Current.Run(testSuite.Name, nil)
-			if err != nil {
-				mqutil.Logger.Printf("err:\n%v", err)
-			} else {
-				mqutil.Logger.Println("success")
-			}
-			for k := range counts {
-				mqplan.Current.ResultCounts[k] += counts[k]
-			}
-		}
-	} else {
-		mqutil.Logger.Printf("\n---\nTest suite: %s\n", *testToRun)
-		fmt.Printf("\n---\nTest suite: %s\n", *testToRun)
-		counts, err := mqplan.Current.Run(*testToRun, nil)
+
+	for _, testSuite := range mqplan.Current.SuiteList {
+		mqutil.Logger.Printf("\n---Test suite: %s\n", testSuite.Name)
+		fmt.Printf("\n---Test suite: %s\n", testSuite.Name)
+		counts, err := mqplan.Current.Run(testSuite.Name, nil)
+
 		if err != nil {
 			mqutil.Logger.Printf("err:\n%v", err)
 		} else {
-			mqutil.Logger.Println("success")
+			mqutil.Logger.Println("test success")
 		}
 		for k := range counts {
 			mqplan.Current.ResultCounts[k] += counts[k]
