@@ -4,12 +4,13 @@ package mqswag
 import (
 	"fmt"
 	"io/ioutil"
-	"meqa/mqutil"
+
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/gbatanov/meqa/mqutil"
 	"github.com/go-openapi/loads"
 	"github.com/go-openapi/loads/fmts"
 	"github.com/go-openapi/spec"
@@ -137,7 +138,7 @@ func CreateSwaggerFromURL(path string, meqaPath string) (*Swagger, error) {
 	if ar[len(ar)-1] == "json" {
 		swaggerJsonPath = path
 	} else {
-		yamlBytes, err := ioutil.ReadFile(path)
+		yamlBytes, err := os.ReadFile(path)
 		if err != nil {
 			mqutil.Logger.Printf("can't read file %s", path)
 			return nil, err

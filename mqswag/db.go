@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"meqa/mqutil"
+	"log"
+
 	"reflect"
 	"sync"
 
+	"github.com/gbatanov/meqa/mqutil"
 	"github.com/go-openapi/spec"
 	"github.com/xeipuuv/gojsonschema"
 )
@@ -418,6 +420,10 @@ type DB struct {
 // a dag, then iterate through all the objects, and find those that doesn't have any oepration
 // as a child.
 func (db *DB) Init(s *Swagger) {
+	if s == nil {
+		return
+	}
+	log.Println("DB init with Swagger success")
 	db.Swagger = s
 	db.schemas = make(map[string](*SchemaDB))
 	for schemaName, schema := range s.Definitions {

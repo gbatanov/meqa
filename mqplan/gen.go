@@ -2,11 +2,12 @@ package mqplan
 
 import (
 	"fmt"
-	"meqa/mqswag"
-	"meqa/mqutil"
+
 	"sort"
 	"strings"
 
+	"github.com/gbatanov/meqa/mqswag"
+	"github.com/gbatanov/meqa/mqutil"
 	"github.com/go-openapi/spec"
 )
 

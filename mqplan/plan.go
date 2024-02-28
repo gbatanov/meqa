@@ -3,18 +3,16 @@ package mqplan
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
-	"gopkg.in/resty.v0"
-	"gopkg.in/yaml.v2"
-
-	"meqa/mqswag"
-	"meqa/mqutil"
+	"github.com/gbatanov/meqa/mqswag"
+	"github.com/gbatanov/meqa/mqutil"
+	"gopkg.in/resty.v1"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -169,7 +167,7 @@ func (plan *TestPlan) AddFromString(data string) error {
 func (plan *TestPlan) InitFromFile(path string, db *mqswag.DB) error {
 	plan.Init(db.Swagger, db)
 
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		mqutil.Logger.Printf("Can't open the following file: %s", path)
 		mqutil.Logger.Println(err.Error())
@@ -230,9 +228,8 @@ func (plan *TestPlan) WriteResultToFile(path string) error {
 	p.SuiteMap = map[string]*TestSuite{tc.Name: tc}
 	p.SuiteList = append(p.SuiteList, tc)
 
-	for _, test := range plan.resultList {
-		tc.Tests = append(tc.Tests, test)
-	}
+	tc.Tests = append(tc.Tests, plan.resultList...)
+
 	return p.DumpToFile(path)
 }
 

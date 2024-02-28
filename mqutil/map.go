@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/go-openapi/swag"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 func InterfaceToJsonString(i interface{}) string {

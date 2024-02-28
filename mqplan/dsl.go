@@ -6,19 +6,20 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
 	"strings"
 	"time"
 
-	"gopkg.in/resty.v0"
+	"gopkg.in/resty.v1"
 
-	"meqa/mqswag"
-	"meqa/mqutil"
 	"reflect"
 
 	"encoding/json"
 
+	"github.com/gbatanov/meqa/mqswag"
+	"github.com/gbatanov/meqa/mqutil"
 	"github.com/go-openapi/spec"
 	"github.com/lucasjones/reggen"
 	uuid "github.com/satori/go.uuid"
@@ -436,8 +437,8 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 	respBody := resp.Body
 	respSchema := (*mqswag.Schema)(respSpec.Schema)
 	var resultObj interface{}
-	if len(respBody) > 0 {
-		d := json.NewDecoder(bytes.NewReader(respBody))
+	if len(respBody()) > 0 {
+		d := json.NewDecoder(bytes.NewReader(respBody()))
 		d.UseNumber()
 		d.Decode(&resultObj)
 	}
@@ -550,7 +551,7 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 
 	// Log some non-fatal errors.
 	if respSchema != nil {
-		if len(respBody) > 0 {
+		if len(respBody()) > 0 {
 			if resultObj == nil && !respSchema.Type.Contains(gojsonschema.TYPE_STRING) {
 				specBytes, _ := json.MarshalIndent(respSpec, "", "    ")
 				mqutil.Logger.Printf("server response doesn't match swagger spec: \n%s", string(specBytes))
@@ -797,6 +798,7 @@ func (t *Test) Run(tc *TestSuite) error {
 	default:
 		return mqutil.NewError(mqutil.ErrInvalid, fmt.Sprintf("Unknown method in test %s: %v", t.Name, t.Method))
 	}
+	log.Println(path, resp)
 	t.stopTime = time.Now()
 	fmt.Printf("... call completed: %f seconds\n", t.stopTime.Sub(t.startTime).Seconds())
 
@@ -804,7 +806,7 @@ func (t *Test) Run(tc *TestSuite) error {
 		t.err = mqutil.NewError(mqutil.ErrHttp, err.Error())
 	} else {
 		mqutil.Logger.Print(resp.Status())
-		mqutil.Logger.Println(string(resp.Body))
+		mqutil.Logger.Println(string(resp.Body()))
 	}
 	err = t.ProcessResult(resp)
 	return err
@@ -891,7 +893,9 @@ func ParamsAdd(dst []spec.Parameter, src []spec.Parameter) []spec.Parameter {
 // ResolveParameters fullfills the parameters for the specified request using the in-mem DB.
 // The resolved parameters will be added to test.Parameters map.
 func (t *Test) ResolveParameters(tc *TestSuite) error {
+
 	pathItem := t.db.Swagger.Paths.Paths[t.Path]
+	log.Println(pathItem)
 	t.op = GetOperationByMethod(&pathItem, t.Method)
 	if t.op == nil {
 		return mqutil.NewError(mqutil.ErrNotFound, fmt.Sprintf("Path %s not found in swagger file", t.Path))
@@ -999,6 +1003,18 @@ func (t *Test) ResolveParameters(tc *TestSuite) error {
 		t.BodyParams = bodyMap
 	}
 	return nil
+}
+
+func removeNulls2(inputSlice *[]interface{}) {
+	if len(*inputSlice) > 0 {
+		filteredSlice := make([]interface{}, len(*inputSlice))
+		for k, v := range *inputSlice {
+			if v != nil {
+				filteredSlice[k] = v
+			}
+		}
+		*inputSlice = filteredSlice
+	}
 }
 
 func removeNulls(inputMap *map[string]interface{}) {

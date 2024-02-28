@@ -1,0 +1,1 @@
+mqgen -s=swagger.yaml -a=all -v=true

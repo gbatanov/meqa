@@ -7,17 +7,19 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"meqa/mqplan"
-	"meqa/mqswag"
-	"meqa/mqutil"
+	"log"
+
 	"os"
 	"strings"
 
 	"path/filepath"
 
+	"github.com/gbatanov/meqa/mqplan"
+	"github.com/gbatanov/meqa/mqswag"
+	"github.com/gbatanov/meqa/mqutil"
 	uuid "github.com/satori/go.uuid"
-	"gopkg.in/resty.v0"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/resty.v1"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -69,6 +71,13 @@ func getConfigs(meqaPath string) (map[string]interface{}, error) {
 }
 
 func generateMeqa(meqaPath string, swaggerPath string) error {
+
+	defer func() {
+		if val := recover(); val != nil {
+			log.Println(val)
+		}
+	}()
+
 	caPool := x509.NewCertPool()
 	permCert := `-----BEGIN CERTIFICATE-----
 MIIDVzCCAj+gAwIBAgIJAJOCmHT8l8H6MA0GCSqGSIb3DQEBCwUAMEIxCzAJBgNV
@@ -165,20 +174,20 @@ Do you wish to proceed? y/n: `
 
 	req := resty.R()
 	req.SetBody(bodyMap)
-	resp, err := req.Post(serverURL + "/specs")
+	resp, _ := req.Post(serverURL + "/specs")
 
 	if status := resp.StatusCode(); status >= 300 {
-		return fmt.Errorf("server call failed, status %d, body:\n%s", status, string(resp.Body))
+		return fmt.Errorf("server call failed, status %d, body:\n%s", status, string(resp.Body()))
 	}
 
 	respMap := make(map[string]interface{})
-	err = json.Unmarshal(resp.Body, &respMap)
+	err = json.Unmarshal(resp.Body(), &respMap)
 	if err != nil {
 		return err
 	}
 
 	if respMap["swagger_meqa"] == nil {
-		return fmt.Errorf("server call failed, status %d, body:\n%s", resp.StatusCode(), string(resp.Body))
+		return fmt.Errorf("server call failed, status %d, body:\n%s", resp.StatusCode(), string(resp.Body()))
 	}
 
 	// output file name is the input swagger spec name + _meqa.yml, if there isn't a _meqa already
@@ -213,7 +222,7 @@ func main() {
 	runMeqaPath := runCommand.String("d", meqaDataDir, "the directory where meqa config, log and output files reside")
 	runSwaggerFile := runCommand.String("s", "", "the meqa generated OpenAPI (Swagger) spec file path")
 	testPlanFile := runCommand.String("p", "", "the test plan file name")
-	resultPath := runCommand.String("r", "", "the test result file name (default result.yml in meqa_data dir)")
+	resultPath := runCommand.String("r", "result.yml", "the test result file name (default result.yml in meqa_data dir)")
 	testToRun := runCommand.String("t", "all", "the test to run")
 	username := runCommand.String("u", "", "the username for basic HTTP authentication")
 	password := runCommand.String("w", "", "the password for basic HTTP authentication")
@@ -283,7 +292,7 @@ func main() {
 		err = generateMeqa(*meqaPath, *swaggerFile)
 		if err != nil {
 			fmt.Printf("got an err:\n%s", err.Error())
-			os.Exit(1)
+			//			os.Exit(1)
 		}
 		return
 	}

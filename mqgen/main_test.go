@@ -1,10 +1,11 @@
 package main
 
 import (
-	"meqa/mqutil"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/gbatanov/meqa/mqutil"
 )
 
 func TestMqgen(t *testing.T) {
