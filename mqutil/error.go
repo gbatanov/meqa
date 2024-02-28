@@ -2,7 +2,6 @@ package mqutil
 
 import (
 	"fmt"
-	"runtime/debug"
 )
 
 const (
@@ -34,10 +33,30 @@ func (e *TypedError) Error() string {
 func (e *TypedError) Type() int {
 	return e.errType
 }
+func (e *TypedError) TypeString() string {
+	switch e.errType {
+	case ErrOK:
+		return "success"
+	case ErrInvalid:
+		return "invalid parameters"
+	case ErrNotFound:
+		return "resource not found"
+	case ErrExpect:
+		return "the REST result doesn't match the expected value"
+	case ErrHttp:
+		return "Http request failed"
+	case ErrServerResp:
+		return "unexpected server response"
+	case ErrInternal:
+		return "unexpected internal error (meqa error)"
+	default:
+		return "unknown error"
+	}
+}
 
 func NewError(errType int, str string) error {
-	buf := string(debug.Stack())
+	buf := "" //string(debug.Stack())
 	err := TypedError{errType, ""}
-	err.errMsg = fmt.Sprintf("==== %v ====\nError message:\n%s\nBacktrace:%v", errType, str, buf)
+	err.errMsg = fmt.Sprintf("==== %s ====\nError message:\n%s\nBacktrace:%v", err.TypeString(), str, buf)
 	return &err
 }

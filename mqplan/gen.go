@@ -180,7 +180,7 @@ func GeneratePathTestSuite(operations mqswag.NodeList, plan *TestPlan) {
 	pathName := operations[0].GetName()
 	sort.Sort(mqswag.ByMethodPriority(operations))
 	testId := 0
-	testSuite := CreateTestSuite(fmt.Sprintf("%s", pathName), nil, plan)
+	testSuite := CreateTestSuite(pathName, nil, plan)
 	createTest := &Test{}
 	idTag := "id"
 	for _, o := range operations {
@@ -241,7 +241,7 @@ func (n PathWeightList) Less(i, j int) bool {
 
 // Go through all the paths in swagger, and generate the tests for all the operations under
 // the path.
-func GeneratePathTestPlan(swagger *mqswag.Swagger, dag *mqswag.DAG, whitelist map[string]bool) (*TestPlan, error) {
+func GeneratePathTestPlan(swagger *mqswag.Swagger, dag *mqswag.DAG) (*TestPlan, error) {
 	testPlan := &TestPlan{}
 	testPlan.Init(swagger, nil)
 	testPlan.comment = `
@@ -260,8 +260,8 @@ parameters by default.
 		}
 		name := current.GetName()
 
-		// if the last path element is a {..} path param we remove it. Also remove the ending "/"
-		// because it has no effect.
+		// if the last path element is a {..} path param we remove it.
+		// Also remove the ending "/" because it has no effect.
 		nameArray := strings.Split(name, "/")
 		if len(nameArray) > 0 && len(nameArray[len(nameArray)-1]) == 0 {
 			nameArray = nameArray[:len(nameArray)-1]
@@ -294,22 +294,20 @@ parameters by default.
 	sort.Sort(pathWeightList)
 
 	for _, p := range pathWeightList {
-		if whitelist == nil || whitelist[p.path] {
-			GeneratePathTestSuite(pathMap[p.path], testPlan)
-		}
+		GeneratePathTestSuite(pathMap[p.path], testPlan)
 	}
 	return testPlan, nil
 }
 
-// Go through all the paths in swagger, and generate the tests for all the operations under
-// the path.
+// Go through all the paths in swagger,
+// and generate the tests for all the operations under the path.
 func GenerateSimpleTestPlan(swagger *mqswag.Swagger, dag *mqswag.DAG) (*TestPlan, error) {
 	testPlan := &TestPlan{}
 	testPlan.Init(swagger, nil)
 	addInitTestSuite(testPlan)
 
 	testId := 0
-	testSuite := CreateTestSuite(fmt.Sprintf("simple test suite"), nil, testPlan)
+	testSuite := CreateTestSuite("simple test suite", nil, testPlan)
 	testSuite.comment = "The meqa_init task within a test suite initializes parameters that are applied to all tests within this suite"
 	testSuite.Tests = append(testSuite.Tests, createInitTask())
 	addFunc := func(previous *mqswag.DAGNode, current *mqswag.DAGNode) error {

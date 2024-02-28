@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 
 	"reflect"
 	"sync"
@@ -423,7 +422,7 @@ func (db *DB) Init(s *Swagger) {
 	if s == nil {
 		return
 	}
-	log.Println("DB init with Swagger success")
+	// log.Println("DB init with Swagger success")
 	db.Swagger = s
 	db.schemas = make(map[string](*SchemaDB))
 	for schemaName, schema := range s.Definitions {

@@ -3,6 +3,7 @@ package mqplan
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"strings"
@@ -238,7 +239,7 @@ func (plan *TestPlan) LogErrors() {
 	fmt.Printf("-----------------------------Errors----------------------------------\n")
 	fmt.Print(mqutil.END)
 	for _, t := range plan.resultList {
-		if t.responseError != nil || t.schemaError != nil {
+		if t.responseError != nil /*|| t.schemaError != nil */ {
 			fmt.Print(mqutil.AQUA)
 			fmt.Println("--------")
 			fmt.Printf("%v: %v\n", t.Path, t.Name)
@@ -250,11 +251,13 @@ func (plan *TestPlan) LogErrors() {
 			fmt.Println(t.responseError)
 			fmt.Print(mqutil.END)
 		}
-		if t.schemaError != nil {
-			fmt.Print(mqutil.YELLOW)
-			// fmt.Println(t.schemaError.Error())
-			fmt.Print(mqutil.END)
-		}
+		/*
+			if t.schemaError != nil {
+				fmt.Print(mqutil.YELLOW)
+				fmt.Println(t.schemaError.Error())
+				fmt.Print(mqutil.END)
+			}
+		*/
 	}
 	fmt.Print(mqutil.AQUA)
 	fmt.Println("---------------------------------------------------------------------")
@@ -285,6 +288,7 @@ func (plan *TestPlan) Init(swagger *mqswag.Swagger, db *mqswag.DB) {
 
 // Run a named TestSuite in the test plan.
 func (plan *TestPlan) Run(name string, parentTest *Test) (map[string]int, error) {
+	log.Println("name: ", name)
 	tc, ok := plan.SuiteMap[name]
 	resultCounts := make(map[string]int)
 	if !ok || len(tc.Tests) == 0 {
@@ -292,6 +296,7 @@ func (plan *TestPlan) Run(name string, parentTest *Test) (map[string]int, error)
 		mqutil.Logger.Println(str)
 		return resultCounts, errors.New(str)
 	}
+	log.Println("tc.Name: ", tc.Name)
 	tc.db = plan.db.CloneSchema()
 	defer func() {
 		tc.db = nil
@@ -370,6 +375,7 @@ func (h *TestHistory) Append(t *Test) {
 var History TestHistory
 
 func init() {
-	rand.Seed(int64(time.Now().Second()))
+	//	rand.Seed(int64(time.Now().Second()))
+	rand.New(rand.NewSource(int64(time.Now().Second())))
 	resty.SetRedirectPolicy(resty.FlexibleRedirectPolicy(15))
 }

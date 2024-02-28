@@ -31,6 +31,7 @@ const (
 	ExpectBody   = "body"
 )
 
+// TODO: в реальном файле хоста не будет
 func GetBaseURL(swagger *mqswag.Swagger) string {
 	// Prefer http, then https, then others.
 	scheme := ""
@@ -412,7 +413,7 @@ func (t *Test) GetParam(path []string) interface{} {
 // ProcessResult decodes the response from the server into a result array
 func (t *Test) ProcessResult(resp *resty.Response) error {
 	if t.err != nil {
-		fmt.Printf("REST call hit the following error: %s\n", t.err.Error())
+		log.Printf("REST call hit the following error: %s\n", t.err.Error())
 		return t.err
 	}
 
@@ -486,12 +487,12 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 				fmt.Printf("... checking body against test's expect value. Success\n")
 			} else {
 				mqutil.InterfacePrint(map[string]interface{}{"... expecting body": t.Expect[ExpectBody]}, true)
-				fmt.Printf("... actual response body: %s\n", respBody)
+				fmt.Printf("... actual response body: %s\n", respBody())
 				fmt.Printf("... checking body against test's expect value. Fail\n")
 				ejson, _ := json.Marshal(t.Expect[ExpectBody])
 				setExpect()
 				return mqutil.NewError(mqutil.ErrExpect, fmt.Sprintf(
-					"=== test failed, expecting body: \n%s\ngot body:\n%s\n===", string(ejson), respBody))
+					"=== test failed, expecting body: \n%s\ngot body:\n%s\n===", string(ejson), respBody()))
 			}
 		}
 	} else {
@@ -514,8 +515,8 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 			mqutil.Logger.Printf("server response doesn't match swagger spec: \n%s", string(specBytes))
 			t.schemaError = err
 			if mqutil.Verbose {
-				// fmt.Printf("... openapi response schema: %s\n", string(specBytes))
-				// fmt.Printf("... response body: %s\n", string(respBody))
+				fmt.Printf("... openapi response schema: %s\n", string(specBytes))
+				fmt.Printf("... response body: %s\n", string(respBody()))
 				fmt.Println(err.Error())
 			}
 
@@ -634,7 +635,7 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 			}
 		}
 		for className, resultArray := range collection {
-			objTag := mqswag.MeqaTag{className, "", "", 0}
+			objTag := mqswag.MeqaTag{Class: className, Property: "", Operation: "", Flags: 0}
 			for _, c := range resultArray {
 				t.AddObjectComparison(&objTag, c.(map[string]interface{}), (*spec.Schema)(t.db.GetSchema(className)))
 			}
@@ -800,7 +801,7 @@ func (t *Test) Run(tc *TestSuite) error {
 	}
 	log.Println(path, resp)
 	t.stopTime = time.Now()
-	fmt.Printf("... call completed: %f seconds\n", t.stopTime.Sub(t.startTime).Seconds())
+	log.Printf("... call completed: %f seconds\n", t.stopTime.Sub(t.startTime).Seconds())
 
 	if err != nil {
 		t.err = mqutil.NewError(mqutil.ErrHttp, err.Error())
@@ -895,12 +896,12 @@ func ParamsAdd(dst []spec.Parameter, src []spec.Parameter) []spec.Parameter {
 func (t *Test) ResolveParameters(tc *TestSuite) error {
 
 	pathItem := t.db.Swagger.Paths.Paths[t.Path]
-	log.Println(pathItem)
+
 	t.op = GetOperationByMethod(&pathItem, t.Method)
 	if t.op == nil {
 		return mqutil.NewError(mqutil.ErrNotFound, fmt.Sprintf("Path %s not found in swagger file", t.Path))
 	}
-	fmt.Printf("... resolving parameters.\n")
+	log.Printf("... resolving parameters.\n")
 
 	// There can be parameters at the path level. We merge these with the operation parameters.
 	t.op.Parameters = ParamsAdd(t.op.Parameters, pathItem.Parameters)
@@ -912,7 +913,7 @@ func (t *Test) ResolveParameters(tc *TestSuite) error {
 	var err error
 	var genParam interface{}
 	for _, params := range t.op.Parameters {
-		fmt.Printf("        %s (in %s): ", params.Name, params.In)
+		log.Printf("        %s (in %s): ", params.Name, params.In)
 		if params.In == "body" {
 			var bodyMap map[string]interface{}
 			bodyIsMap := false
@@ -931,7 +932,7 @@ func (t *Test) ResolveParameters(tc *TestSuite) error {
 						}
 					}
 				}
-				fmt.Print("provided\n")
+				log.Print("provided\n")
 				continue
 			}
 			// Body is map, we generate parameters, then use the value in the original t and tc's bodyParam where possible
@@ -1005,18 +1006,6 @@ func (t *Test) ResolveParameters(tc *TestSuite) error {
 	return nil
 }
 
-func removeNulls2(inputSlice *[]interface{}) {
-	if len(*inputSlice) > 0 {
-		filteredSlice := make([]interface{}, len(*inputSlice))
-		for k, v := range *inputSlice {
-			if v != nil {
-				filteredSlice[k] = v
-			}
-		}
-		*inputSlice = filteredSlice
-	}
-}
-
 func removeNulls(inputMap *map[string]interface{}) {
 	filteredMap := make(map[string]interface{})
 	for k, v := range *inputMap {
@@ -1054,7 +1043,7 @@ func (t *Test) GenerateParameter(paramSpec *spec.Parameter, db *mqswag.DB) (inte
 		return t.GenerateSchema("", tag, paramSpec.Schema, db, 3)
 	}
 	if len(paramSpec.Enum) != 0 {
-		fmt.Print("enum\n")
+		log.Print("enum\n")
 		return generateEnum(paramSpec.Enum)
 	}
 	if len(paramSpec.Type) == 0 {
@@ -1127,7 +1116,7 @@ func (t *Test) generateByType(s *spec.Schema, prefix string, parentTag *mqswag.M
 		case gojsonschema.TYPE_STRING:
 			result, err = generateString(s, prefix)
 		case "file":
-			return nil, errors.New("can not automatically upload a file, parameter of file type must be manually set\n")
+			return nil, errors.New("can not automatically upload a file, parameter of file type must be manually set")
 		}
 		if result != nil && err == nil {
 			t.AddBasicComparison(tag, paramSpec, result)

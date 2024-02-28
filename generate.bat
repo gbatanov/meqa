@@ -1,1 +1,1 @@
-mqgen -s=swagger.yaml -a=all -v=true
+mqgo gen -s=swagger.yaml -a=all -v=false
