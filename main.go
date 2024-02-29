@@ -16,7 +16,7 @@ import (
 	"gopkg.in/resty.v1"
 )
 
-const VERSION = "v0.1.5"
+const VERSION = "v0.1.6"
 
 const (
 	HOST        = "192.168.76.95:8000"
@@ -39,7 +39,7 @@ func main() {
 	*/
 	meqaPath := flag.String("d", MeqaDataDir, "the directory where meqa log and output files reside")
 	swaggerFile := flag.String("s", SwaggerFile, "the OpenAPI (Swagger) spec file path")
-	verbose := flag.Bool("v", true, "turn on verbose mode")
+	verbose := flag.Bool("v", false, "turn on verbose mode")
 	//	resultPath := flag.String("r", ResultFile, "the test result file name")
 	username := flag.String("u", "admin", "the username for basic HTTP authentication")
 	password := flag.String("w", "admin", "the password for basic HTTP authentication")
@@ -89,13 +89,13 @@ func main() {
 		fmt.Printf("got an err:\n%s", err.Error())
 		return
 	}
-	testToRun := "all"
-	runMeqa(meqaPath, swaggerFile, &testPlanFile, resultPath, &testToRun, username, password, apitoken, verbose)
+
+	runTests(meqaPath, swaggerFile, &testPlanFile, resultPath, username, password, apitoken, verbose)
 
 }
 
-func runMeqa(meqaPath *string, swaggerFile *string, testPlanFile *string, resultPath *string,
-	testToRun *string, username *string, password *string, apitoken *string, verbose *bool) {
+func runTests(meqaPath *string, swaggerFile *string, testPlanFile *string, resultPath *string,
+	username *string, password *string, apitoken *string, verbose *bool) {
 
 	mqutil.Verbose = *verbose
 
@@ -133,23 +133,25 @@ func runMeqa(meqaPath *string, swaggerFile *string, testPlanFile *string, result
 
 	mqplan.Current.ResultCounts = make(map[string]int)
 
-	for _, testSuite := range mqplan.Current.SuiteList {
-		mqutil.Logger.Printf("\n---Test suite: %s\n", testSuite.Name)
-		fmt.Printf("\n---Test suite: %s\n", testSuite.Name)
-		counts, err := mqplan.Current.Run(testSuite.Name, nil)
+	for _, testCase := range mqplan.Current.TestList {
+		mqutil.Logger.Printf("\n---Test case path: %s\n", testCase.Name)
+		counts, err := mqplan.Current.Run(testCase.Name, nil)
 
 		if err != nil {
-			mqutil.Logger.Printf("err:\n%v", err)
+			mqutil.Logger.Printf("%s", err.Error())
 		} else {
-			mqutil.Logger.Println("test success")
+			mqutil.Logger.Println("=== test success ===")
 		}
 		for k := range counts {
 			mqplan.Current.ResultCounts[k] += counts[k]
 		}
+		mqutil.Logger.Println(" ")
 	}
 
 	// Выводим список ошибок в консоль
-	mqplan.Current.LogErrors()
+	if mqplan.Current.ResultCounts["Failed"] < 10 {
+		mqplan.Current.LogErrors()
+	}
 	// Выводим суммарный итог по тесту
 	mqplan.Current.PrintSummary()
 	// Пишем реузльтирующий файл

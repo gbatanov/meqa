@@ -81,7 +81,7 @@ func Run(meqaPath *string, swaggerFile *string, algorithm *string, verbose *bool
 	}
 
 	for _, algo := range plansToGenerate {
-		var testPlan *mqplan.TestPlan
+		var testPlan *mqplan.TestSuite
 		switch algo {
 		case algoPath:
 			testPlan, err = mqplan.GeneratePathTestPlan(swagger, dag)

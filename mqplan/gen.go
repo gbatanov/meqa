@@ -13,15 +13,15 @@ import (
 
 func createInitTask() *Test {
 	initTask := &Test{}
-	initTask.Name = MeqaInit
+	initTask.Name = StartUp
 	return initTask
 }
 
-func addInitTestSuite(testPlan *TestPlan) {
-	testSuite := CreateTestSuite(MeqaInit, nil, testPlan)
-	testSuite.comment = "The meqa_init section initializes parameters (e.g. pathParams) that are applied to all suites"
-	testSuite.Tests = append(testSuite.Tests, createInitTask())
-	testPlan.Add(testSuite)
+func addInitTestSuite(testPlan *TestSuite) {
+	testCase := CreateTestCase(StartUp, nil, testPlan)
+	testCase.comment = "The startUp section initializes parameters (e.g. pathParams) that are applied to all suites"
+	testCase.Tests = append(testCase.Tests, createInitTask())
+	testPlan.Add(testCase)
 }
 
 // Given a path name, retrieve the last entry that is not a path param.
@@ -78,7 +78,7 @@ func OperationMatches(node *mqswag.DAGNode, method string) bool {
 
 // GenerateTestsForObject for the obj that we traversed to from create. Add the test suites
 // generated to plan.
-func GenerateTestsForObject(create *mqswag.DAGNode, obj *mqswag.DAGNode, plan *TestPlan) error {
+func GenerateTestsForObject(create *mqswag.DAGNode, obj *mqswag.DAGNode, plan *TestSuite) error {
 	if obj.GetType() != mqswag.TypeDef {
 		return nil
 	}
@@ -90,28 +90,28 @@ func GenerateTestsForObject(create *mqswag.DAGNode, obj *mqswag.DAGNode, plan *T
 
 	// A loop where we go through all the child operations
 	testId := 1
-	testSuite := CreateTestSuite(fmt.Sprintf("%s -- %s -- all", createPath, objName), nil, plan)
-	testSuite.Tests = append(testSuite.Tests, CreateTestFromOp(create, testId))
+	testCase := CreateTestCase(fmt.Sprintf("%s -- %s -- all", createPath, objName), nil, plan)
+	testCase.Tests = append(testCase.Tests, CreateTestFromOp(create, testId))
 	for _, child := range obj.Children {
 		if child.GetType() != mqswag.TypeOp {
 			continue
 		}
 		testId++
-		testSuite.Tests = append(testSuite.Tests, CreateTestFromOp(child, testId))
+		testCase.Tests = append(testCase.Tests, CreateTestFromOp(child, testId))
 		if OperationMatches(child, mqswag.MethodDelete) {
 			testId++
-			testSuite.Tests = append(testSuite.Tests, CreateTestFromOp(create, testId))
+			testCase.Tests = append(testCase.Tests, CreateTestFromOp(create, testId))
 		}
 	}
-	if len(testSuite.Tests) > 0 {
-		plan.Add(testSuite)
+	if len(testCase.Tests) > 0 {
+		plan.Add(testCase)
 	}
 
 	// a loop where we pick random operations and pair it with the create operation.
 	// This would generate a few objects.
 	/* disable random stuff during development
 	testId = 0
-	testSuite = &TestSuite{nil, fmt.Sprintf("%s -- %s -- random", createPath, objName)}
+	testCase = &TestCase{nil, fmt.Sprintf("%s -- %s -- random", createPath, objName)}
 	for i := 0; i < 2*len(obj.Children); i++ {
 		j := rand.Intn(len(obj.Children))
 		child := obj.Children[j]
@@ -120,20 +120,20 @@ func GenerateTestsForObject(create *mqswag.DAGNode, obj *mqswag.DAGNode, plan *T
 			continue
 		}
 		testId++
-		testSuite.Tests = append(testSuite.Tests, CreateTestFromOp(create, testId))
+		testCase.Tests = append(testCase.Tests, CreateTestFromOp(create, testId))
 		testId++
-		testSuite.Tests = append(testSuite.Tests, CreateTestFromOp(child, testId))
+		testCase.Tests = append(testCase.Tests, CreateTestFromOp(child, testId))
 	}
-	if len(testSuite.Tests) > 0 {
-		plan.Add(testSuite)
+	if len(testCase.Tests) > 0 {
+		plan.Add(testCase)
 	}
 	*/
 
 	return nil
 }
 
-func GenerateTestPlan(swagger *mqswag.Swagger, dag *mqswag.DAG) (*TestPlan, error) {
-	testPlan := &TestPlan{}
+func GenerateTestPlan(swagger *mqswag.Swagger, dag *mqswag.DAG) (*TestSuite, error) {
+	testPlan := &TestSuite{}
 	testPlan.Init(swagger, nil)
 	testPlan.comment = `
 This test plan has test suites that are about objects. Each test suite create an object,
@@ -148,9 +148,9 @@ then exercise REST calls that use that object as an input.
 
 		// Exercise the function by itself.
 		/*
-			testSuite := CreateTestSuite(current.GetName()+" "+current.GetMethod(), nil, testPlan)
-			testSuite.Tests = append(testSuite.Tests, CreateTestFromOp(current, 1))
-			testPlan.Add(testSuite)
+			testCase := CreateTestCase(current.GetName()+" "+current.GetMethod(), nil, testPlan)
+			testCase.Tests = append(testCase.Tests, CreateTestFromOp(current, 1))
+			testPlan.Add(testCase)
 		*/
 
 		// When iterating by weight previous is always nil.
@@ -172,7 +172,7 @@ then exercise REST calls that use that object as an input.
 
 // All the operations have the same path. We generate one test suite, with the
 // tests of ascending weight and priority among the operations
-func GeneratePathTestSuite(operations mqswag.NodeList, plan *TestPlan) {
+func GeneratePathTestSuite(operations mqswag.NodeList, plan *TestSuite) {
 	if len(operations) == 0 {
 		return
 	}
@@ -180,13 +180,13 @@ func GeneratePathTestSuite(operations mqswag.NodeList, plan *TestPlan) {
 	pathName := operations[0].GetName()
 	sort.Sort(mqswag.ByMethodPriority(operations))
 	testId := 0
-	testSuite := CreateTestSuite(pathName, nil, plan)
+	testCase := CreateTestCase(pathName, nil, plan)
 	createTest := &Test{}
 	idTag := "id"
 	for _, o := range operations {
 		testId++
 		currentTest := CreateTestFromOp(o, testId)
-		testSuite.Tests = append(testSuite.Tests, currentTest)
+		testCase.Tests = append(testCase.Tests, currentTest)
 		if OperationMatches(o, mqswag.MethodPost) {
 			createTest = currentTest
 		} else if strings.Contains(o.GetName(), idTag) {
@@ -194,7 +194,7 @@ func GeneratePathTestSuite(operations mqswag.NodeList, plan *TestPlan) {
 			currentTest.PathParams[idTag] = fmt.Sprintf("{{%s.outputs.%s}}", createTest.Name, idTag)
 		}
 		if OperationMatches(o, mqswag.MethodDelete) {
-			lastTest := testSuite.Tests[len(testSuite.Tests)-1]
+			lastTest := testCase.Tests[len(testCase.Tests)-1]
 			// Find an operation that takes the same last path param.
 			lastParam := GetLastPathParam(o.GetName())
 			if len(lastParam) > 0 {
@@ -208,15 +208,15 @@ func GeneratePathTestSuite(operations mqswag.NodeList, plan *TestPlan) {
 						repeatTest.Expect = make(map[string]interface{})
 						repeatTest.PathParams[lastParam] = fmt.Sprintf("{{%s.pathParams.%s}}", lastTest.Name, lastParam)
 						repeatTest.Expect["status"] = "fail"
-						testSuite.Tests = append(testSuite.Tests, repeatTest)
+						testCase.Tests = append(testCase.Tests, repeatTest)
 						break
 					}
 				}
 			}
 		}
 	}
-	if len(testSuite.Tests) > 0 {
-		plan.Add(testSuite)
+	if len(testCase.Tests) > 0 {
+		plan.Add(testCase)
 	}
 }
 
@@ -241,8 +241,8 @@ func (n PathWeightList) Less(i, j int) bool {
 
 // Go through all the paths in swagger, and generate the tests for all the operations under
 // the path.
-func GeneratePathTestPlan(swagger *mqswag.Swagger, dag *mqswag.DAG) (*TestPlan, error) {
-	testPlan := &TestPlan{}
+func GeneratePathTestPlan(swagger *mqswag.Swagger, dag *mqswag.DAG) (*TestSuite, error) {
+	testPlan := &TestSuite{}
 	testPlan.Init(swagger, nil)
 	testPlan.comment = `
 In this test plan, the test suites are the REST paths, and the tests are the different
@@ -301,15 +301,15 @@ parameters by default.
 
 // Go through all the paths in swagger,
 // and generate the tests for all the operations under the path.
-func GenerateSimpleTestPlan(swagger *mqswag.Swagger, dag *mqswag.DAG) (*TestPlan, error) {
-	testPlan := &TestPlan{}
+func GenerateSimpleTestPlan(swagger *mqswag.Swagger, dag *mqswag.DAG) (*TestSuite, error) {
+	testPlan := &TestSuite{}
 	testPlan.Init(swagger, nil)
 	addInitTestSuite(testPlan)
 
 	testId := 0
-	testSuite := CreateTestSuite("simple test suite", nil, testPlan)
-	testSuite.comment = "The meqa_init task within a test suite initializes parameters that are applied to all tests within this suite"
-	testSuite.Tests = append(testSuite.Tests, createInitTask())
+	testCase := CreateTestCase("simple test suite", nil, testPlan)
+	testCase.comment = "The startUp task within a test suite initializes parameters that are applied to all tests within this suite"
+	testCase.Tests = append(testCase.Tests, createInitTask())
 	addFunc := func(previous *mqswag.DAGNode, current *mqswag.DAGNode) error {
 		if testId >= 10 {
 			return mqutil.NewError(mqutil.ErrOK, "done")
@@ -320,13 +320,13 @@ func GenerateSimpleTestPlan(swagger *mqswag.Swagger, dag *mqswag.DAG) (*TestPlan
 		}
 
 		testId++
-		testSuite.Tests = append(testSuite.Tests, CreateTestFromOp(current, testId))
+		testCase.Tests = append(testCase.Tests, CreateTestFromOp(current, testId))
 
 		return nil
 	}
 
 	dag.IterateByWeight(addFunc)
-	testPlan.Add(testSuite)
+	testPlan.Add(testCase)
 	testPlan.comment = "\nThis is a simple and short test plan. We just sampled up to 10 REST calls into one test suite.\n"
 
 	return testPlan, nil

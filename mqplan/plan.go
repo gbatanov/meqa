@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	MeqaInit = "meqa_init"
+	StartUp = "startUp"
 )
 
 type TestParams struct {
@@ -64,7 +64,7 @@ func (dst *TestParams) Add(src *TestParams) {
 	}
 }
 
-type TestSuite struct {
+type TestCase struct {
 	Tests []*Test
 	Name  string
 
@@ -77,14 +77,14 @@ type TestSuite struct {
 	Password string
 	ApiToken string
 
-	plan *TestPlan
+	plan *TestSuite
 	db   *mqswag.DB // objects generated/obtained as part of this suite
 
 	comment string
 }
 
-func CreateTestSuite(name string, tests []*Test, plan *TestPlan) *TestSuite {
-	c := TestSuite{}
+func CreateTestCase(name string, tests []*Test, plan *TestSuite) *TestCase {
+	c := TestCase{}
 	c.Name = name
 	c.Tests = tests
 	(&c.TestParams).Copy(&plan.TestParams)
@@ -99,12 +99,12 @@ func CreateTestSuite(name string, tests []*Test, plan *TestPlan) *TestSuite {
 }
 
 // Represents all the test suites in the DSL.
-type TestPlan struct {
-	SuiteMap  map[string](*TestSuite)
-	SuiteList [](*TestSuite)
-	db        *mqswag.DB
-	swagger   *mqswag.Swagger
-	Host      string // Если хост не прописан в swagger.yaml
+type TestSuite struct {
+	SuiteMap map[string](*TestCase)
+	TestList [](*TestCase)
+	db       *mqswag.DB
+	swagger  *mqswag.Swagger
+	Host     string // Если хост не прописан в swagger.yaml
 
 	// global parameters
 	TestParams `yaml:",inline,omitempty" json:",inline,omitempty"`
@@ -122,28 +122,28 @@ type TestPlan struct {
 	comment string
 }
 
-// Add a new TestSuite, returns whether the Case is successfully added.
-func (plan *TestPlan) Add(testSuite *TestSuite) error {
-	if _, exist := plan.SuiteMap[testSuite.Name]; exist {
-		str := fmt.Sprintf("Duplicate name %s found in test plan", testSuite.Name)
+// Add a new TestCase, returns whether the Case is successfully added.
+func (plan *TestSuite) Add(testCase *TestCase) error {
+	if _, exist := plan.SuiteMap[testCase.Name]; exist {
+		str := fmt.Sprintf("Duplicate name %s found in test plan", testCase.Name)
 		mqutil.Logger.Println(str)
 		return errors.New(str)
 	}
-	plan.SuiteMap[testSuite.Name] = testSuite
-	plan.SuiteList = append(plan.SuiteList, testSuite)
+	plan.SuiteMap[testCase.Name] = testCase
+	plan.TestList = append(plan.TestList, testCase)
 	return nil
 }
 
-func (plan *TestPlan) AddFromString(data string) error {
+func (plan *TestSuite) AddFromString(data string) error {
 	var suiteMap map[string]([]*Test)
 	err := yaml.Unmarshal([]byte(data), &suiteMap)
 	if err != nil {
-		mqutil.Logger.Printf("The following is not a valud TestSuite:\n%s", data)
+		mqutil.Logger.Printf("The following is not a valud TestCase:\n%s", data)
 		return err
 	}
 
 	for suiteName, testList := range suiteMap {
-		if suiteName == MeqaInit {
+		if suiteName == StartUp {
 			// global parameters
 			for _, t := range testList {
 				t.Init(nil)
@@ -153,11 +153,11 @@ func (plan *TestPlan) AddFromString(data string) error {
 
 			continue
 		}
-		testSuite := CreateTestSuite(suiteName, testList, plan)
+		testCase := CreateTestCase(suiteName, testList, plan)
 		for _, t := range testList {
-			t.Init(testSuite)
+			t.Init(testCase)
 		}
-		err = plan.Add(testSuite)
+		err = plan.Add(testCase)
 		if err != nil {
 			return err
 		}
@@ -165,7 +165,7 @@ func (plan *TestPlan) AddFromString(data string) error {
 	return nil
 }
 
-func (plan *TestPlan) InitFromFile(path string, db *mqswag.DB) error {
+func (plan *TestSuite) InitFromFile(path string, db *mqswag.DB) error {
 	plan.Init(db.Swagger, db)
 
 	data, err := os.ReadFile(path)
@@ -189,7 +189,7 @@ func WriteComment(comment string, f *os.File) {
 }
 
 // TODO: обработка panic
-func (plan *TestPlan) DumpToFile(path string) error {
+func (plan *TestSuite) DumpToFile(path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -199,16 +199,16 @@ func (plan *TestPlan) DumpToFile(path string) error {
 	if len(plan.comment) > 0 {
 		WriteComment(plan.comment, f)
 	}
-	for _, testSuite := range plan.SuiteList {
+	for _, testCase := range plan.TestList {
 		f.WriteString("\n\n")
-		if len(testSuite.comment) > 0 {
-			WriteComment(testSuite.comment, f)
+		if len(testCase.comment) > 0 {
+			WriteComment(testCase.comment, f)
 		}
 		_, err := f.WriteString("---\n")
 		if err != nil {
 			return err
 		}
-		testMap := map[string]interface{}{testSuite.Name: testSuite.Tests}
+		testMap := map[string]interface{}{testCase.Name: testCase.Tests}
 		caseBytes, err := yaml.Marshal(testMap)
 		if err != nil {
 			return err
@@ -221,21 +221,23 @@ func (plan *TestPlan) DumpToFile(path string) error {
 	return nil
 }
 
-func (plan *TestPlan) WriteResultToFile(path string) error {
+func (plan *TestSuite) WriteResultToFile(path string) error {
 	// We create a new test plan that just contain all the tests in one test suite.
-	p := &TestPlan{}
-	tc := &TestSuite{}
+	p := &TestSuite{}
+	tc := &TestCase{}
 	// Test case name is the current time.
 	tc.Name = time.Now().Format(time.RFC3339)
-	p.SuiteMap = map[string]*TestSuite{tc.Name: tc}
-	p.SuiteList = append(p.SuiteList, tc)
+	p.SuiteMap = map[string]*TestCase{tc.Name: tc}
+	p.TestList = append(p.TestList, tc)
 
 	tc.Tests = append(tc.Tests, plan.resultList...)
 
 	return p.DumpToFile(path)
 }
 
-func (plan *TestPlan) LogErrors() {
+// Вывод в консоль полного списка ошибок в тестах
+func (plan *TestSuite) LogErrors() {
+	fmt.Println(" ")
 	fmt.Print(mqutil.AQUA)
 	fmt.Printf("-----------------------------Errors----------------------------------\n")
 	fmt.Print(mqutil.END)
@@ -271,7 +273,7 @@ func (plan *TestPlan) LogErrors() {
 	fmt.Print(mqutil.END)
 }
 
-func (plan *TestPlan) PrintSummary() {
+func (plan *TestSuite) PrintSummary() {
 	fmt.Print(mqutil.GREEN)
 	fmt.Printf("%v: %v\n", mqutil.Passed, plan.ResultCounts[mqutil.Passed])
 	fmt.Print(mqutil.RED)
@@ -285,16 +287,16 @@ func (plan *TestPlan) PrintSummary() {
 	fmt.Print(mqutil.END)
 }
 
-func (plan *TestPlan) Init(swagger *mqswag.Swagger, db *mqswag.DB) {
+func (plan *TestSuite) Init(swagger *mqswag.Swagger, db *mqswag.DB) {
 	plan.db = db
 	plan.swagger = swagger
-	plan.SuiteMap = make(map[string]*TestSuite)
-	plan.SuiteList = nil
+	plan.SuiteMap = make(map[string]*TestCase)
+	plan.TestList = nil
 	plan.resultList = nil
 }
 
-// Run a named TestSuite in the test plan.
-func (plan *TestPlan) Run(name string, parentTest *Test) (map[string]int, error) {
+// Run a named TestCase in the test plan.
+func (plan *TestSuite) Run(name string, parentTest *Test) (map[string]int, error) {
 	var err error
 	tc, ok := plan.SuiteMap[name]
 	resultCounts := make(map[string]int)
@@ -321,7 +323,7 @@ func (plan *TestPlan) Run(name string, parentTest *Test) (map[string]int, error)
 			continue
 		}
 
-		if test.Name == MeqaInit {
+		if test.Name == StartUp {
 			// Apply the parameters to the test suite.
 			(&tc.TestParams).Copy(&test.TestParams)
 			tc.Strict = test.Strict
@@ -338,8 +340,10 @@ func (plan *TestPlan) Run(name string, parentTest *Test) (map[string]int, error)
 		if parentTest != nil {
 			dup.Name = parentTest.Name // always inherit the name
 		}
+
 		err = dup.Run(tc)
 		dup.err = err
+
 		plan.resultList = append(plan.resultList, dup)
 		if dup.schemaError != nil {
 			resultCounts[mqutil.SchemaMismatch]++
@@ -353,8 +357,8 @@ func (plan *TestPlan) Run(name string, parentTest *Test) (map[string]int, error)
 	return resultCounts, err
 }
 
-// The current global TestPlan
-var Current TestPlan
+// The current global TestSuite
+var Current TestSuite
 
 // TestHistory records the execution result of all the tests
 type TestHistory struct {

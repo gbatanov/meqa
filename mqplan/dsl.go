@@ -116,7 +116,7 @@ type Test struct {
 
 	tag   *mqswag.MeqaTag // The tag at the top level that describes the test
 	db    *mqswag.DB
-	suite *TestSuite
+	suite *TestCase
 	op    *spec.Operation
 	resp  *resty.Response
 	err   error
@@ -125,7 +125,7 @@ type Test struct {
 	schemaError   error
 }
 
-func (t *Test) Init(suite *TestSuite) {
+func (t *Test) Init(suite *TestCase) {
 	t.suite = suite
 	if suite != nil {
 		t.db = suite.plan.db
@@ -297,13 +297,11 @@ func (t *Test) CompareGetResult(className string, associations map[string]map[st
 					continue
 				}
 
-				fmt.Printf("... checking GET result against client DB. Result doesn't match query. Fail\n")
 				t.responseError = fmt.Sprintf("Expected:\n%v\nFound:\n%v\n", string(b), string(c))
 				if len(resultArray) > 1 {
 					t.responseError = t.responseError.(string) + fmt.Sprintf("... and %v other objects.\n", len(resultArray)-1)
 				}
-				return mqutil.NewError(mqutil.ErrHttp, fmt.Sprintf("result returned doesn't contain query parameters:\n%s\n",
-					string(b)))
+				return fmt.Errorf("result returned doesn't contain query parameters:\n%s", string(b))
 
 			}
 
@@ -527,7 +525,7 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 		t.responseError = resp
 		fmt.Printf("... got status: %d. %v\n", status, redFail)
 		setExpect()
-		err := mqutil.NewError(mqutil.ErrExpect, fmt.Sprintf("=== test failed, response code %d ===", status))
+		err := fmt.Errorf("=== test failed, response code %d ===", status)
 		return err
 	}
 
@@ -744,7 +742,7 @@ func (t *Test) SetRequestParameters(req *resty.Request) string {
 	}
 	if t.BodyParams != nil {
 		req.SetBody(t.BodyParams)
-		mqutil.InterfacePrint(map[string]interface{}{"bodyParams": t.BodyParams}, mqutil.Verbose)
+		//		mqutil.InterfacePrint(map[string]interface{}{"bodyParams": t.BodyParams}, mqutil.Verbose)
 	}
 	if len(t.HeaderParams) > 0 {
 		req.SetHeaders(mqutil.MapInterfaceToMapString(t.HeaderParams))
@@ -791,13 +789,12 @@ func (t *Test) CopyParent(parentTest *Test) {
 }
 
 // Run runs the test. Returns the test result.
-func (t *Test) Run(tc *TestSuite) error {
+func (t *Test) Run(tc *TestCase) error {
 
-	mqutil.Logger.Print("\n--- " + t.Name)
-	fmt.Printf("\nRunning test case: %s\n", t.Name)
+	mqutil.Logger.Print("\n--- test case name: " + t.Name)
 	err := t.ResolveParameters(tc)
 	if err != nil {
-		fmt.Printf("... Fail\n... %s\n", err.Error())
+		//		fmt.Printf("... Fail\n... %s\n", err.Error())
 		return err
 	}
 
@@ -835,7 +832,7 @@ func (t *Test) Run(tc *TestSuite) error {
 	log.Printf("... call completed: %f seconds\n", t.stopTime.Sub(t.startTime).Seconds())
 
 	if err != nil {
-		t.err = mqutil.NewError(mqutil.ErrHttp, err.Error())
+		t.err = err
 	} else {
 		mqutil.Logger.Print(resp.Status())
 	}
@@ -923,7 +920,7 @@ func ParamsAdd(dst []spec.Parameter, src []spec.Parameter) []spec.Parameter {
 
 // ResolveParameters fullfills the parameters for the specified request using the in-mem DB.
 // The resolved parameters will be added to test.Parameters map.
-func (t *Test) ResolveParameters(tc *TestSuite) error {
+func (t *Test) ResolveParameters(tc *TestCase) error {
 
 	pathItem := t.db.Swagger.Paths.Paths[t.Path]
 
@@ -1083,7 +1080,7 @@ func (t *Test) GenerateParameter(paramSpec *spec.Parameter, db *mqswag.DB) (inte
 	// construct a full schema from simple ones
 	schema := (*spec.Schema)(mqswag.CreateSchemaFromSimple(&paramSpec.SimpleSchema, &paramSpec.CommonValidations))
 	if paramSpec.Type == gojsonschema.TYPE_OBJECT {
-		return t.generateObject("", tag, schema, db, 3)
+		return t.generateObject(tag, schema, db, 3)
 	}
 	if paramSpec.Type == gojsonschema.TYPE_ARRAY {
 		return t.generateArray("", tag, schema, db, 3)
@@ -1138,7 +1135,7 @@ func (t *Test) generateByType(s *spec.Schema, prefix string, parentTag *mqswag.M
 		var err error
 		switch s.Type[0] {
 		case gojsonschema.TYPE_BOOLEAN:
-			result, err = generateBool(s)
+			result, err = generateBool()
 		case gojsonschema.TYPE_INTEGER:
 			result, err = generateInt(s)
 		case gojsonschema.TYPE_NUMBER:
@@ -1212,7 +1209,7 @@ func generateString(s *spec.Schema, prefix string) (string, error) {
 	return "", mqutil.NewError(mqutil.ErrInvalid, fmt.Sprintf("Invalid format string: %s", s.Format))
 }
 
-func generateBool(s *spec.Schema) (interface{}, error) {
+func generateBool() (interface{}, error) {
 	return rand.Intn(2) == 0, nil
 }
 
@@ -1344,7 +1341,7 @@ func (t *Test) generateArray(name string, parentTag *mqswag.MeqaTag, schema *spe
 	return ar, nil
 }
 
-func (t *Test) generateObject(name string, parentTag *mqswag.MeqaTag, schema *spec.Schema, db *mqswag.DB, level int) (interface{}, error) {
+func (t *Test) generateObject(parentTag *mqswag.MeqaTag, schema *spec.Schema, db *mqswag.DB, level int) (interface{}, error) {
 	obj := make(map[string]interface{})
 	var spaces string
 	var nextLevel int
@@ -1463,10 +1460,10 @@ func (t *Test) GenerateSchema(name string, parentTag *mqswag.MeqaTag, schema *sp
 
 	if len(schema.Type) == 0 {
 		// return nil, mqutil.NewError(mqutil.ErrInvalid, "Parameter doesn't have type")
-		return t.generateObject(name, tag, schema, db, level)
+		return t.generateObject(tag, schema, db, level)
 	}
 	if schema.Type[0] == gojsonschema.TYPE_OBJECT {
-		return t.generateObject(name, tag, schema, db, level)
+		return t.generateObject(tag, schema, db, level)
 	}
 	if schema.Type[0] == gojsonschema.TYPE_ARRAY {
 		return t.generateArray(name, tag, schema, db, level)
