@@ -120,7 +120,7 @@ func GetMeqaTag(desc string) *MeqaTag {
 type Swagger spec.Swagger
 
 // Init from a file
-func CreateSwaggerFromURL(path string, meqaPath string) (*Swagger, error) {
+func CreateSwaggerFromFile(path string, meqaPath string) (*Swagger, error) {
 	tmpPath := filepath.Join(meqaPath, ".meqatmp")
 	os.Remove(tmpPath)
 	tmpFile, err := os.Create(tmpPath)

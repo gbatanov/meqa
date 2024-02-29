@@ -21,23 +21,7 @@ const (
 
 var algoList []string = []string{algoSimple, algoPath}
 
-/*
-	func main() {
-		mqutil.Logger = mqutil.NewStdLogger()
-
-		swaggerJSONFile := filepath.Join(meqaDataDir, "swagger.yml")
-		meqaPath := flag.String("d", meqaDataDir, "the directory where we put the generated files")
-		swaggerFile := flag.String("s", swaggerJSONFile, "the swagger.yml file location")
-		algorithm := flag.String("a", "all", "the algorithm - simple, object, path, all")
-		verbose := flag.Bool("v", false, "turn on verbose mode")
-		whitelistFile := flag.String("w", "", "the whitelist.txt file location")
-
-		flag.Parse()
-		run(meqaPath, swaggerFile, algorithm, verbose, whitelistFile)
-	}
-*/
-func Run(meqaPath *string, swaggerFile *string, algorithm *string, verbose *bool) error {
-	mqutil.Verbose = *verbose
+func Run(meqaPath *string, swaggerFile *string, algorithm *string) error {
 
 	swaggerJsonPath := *swaggerFile
 	if fi, err := os.Stat(swaggerJsonPath); os.IsNotExist(err) || fi.Mode().IsDir() {
@@ -58,7 +42,7 @@ func Run(meqaPath *string, swaggerFile *string, algorithm *string, verbose *bool
 	}
 
 	// loading swagger.json
-	swagger, err := mqswag.CreateSwaggerFromURL(swaggerJsonPath, *meqaPath)
+	swagger, err := mqswag.CreateSwaggerFromFile(swaggerJsonPath, *meqaPath)
 	if err != nil {
 		mqutil.Logger.Printf("Error: %s", err.Error())
 		return err

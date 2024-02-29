@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"log"
 
 	"os"
 
@@ -16,14 +17,14 @@ import (
 	"gopkg.in/resty.v1"
 )
 
-const VERSION = "v0.1.6"
+const VERSION = "v0.1.7"
 
 const (
-	HOST        = "192.168.76.95:8000"
-	MeqaDataDir = "meqa_data"
-	ResultFile  = "result.yml"
-	SwaggerFile = "swagger.yaml"
-	ServerURL   = ""
+	HOST         = "192.168.76.95:8000"
+	MeqaDataDir  = "meqa_data"
+	ResultFile   = "result.yml"
+	SwaggerFile  = "swagger.yaml"
+	AuthorizeUrl = "log_in"
 )
 
 func main() {
@@ -70,7 +71,7 @@ func main() {
 		fmt.Printf("Meqa directory %s is not a directory.", *meqaPath)
 		os.Exit(1)
 	}
-	testPlanFile := filepath.Join(*meqaPath, algorithm+".yml")
+	testSuiteFile := filepath.Join(*meqaPath, algorithm+".yml")
 	rf := filepath.Join(*meqaPath, ResultFile)
 	resultPath := &rf
 
@@ -83,34 +84,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = mqgen.Run(meqaPath, swaggerFile, &algorithm, verbose)
+	mqutil.Verbose = *verbose
+
+	err = mqgen.Run(meqaPath, swaggerFile, &algorithm)
 
 	if err != nil {
 		fmt.Printf("got an err:\n%s", err.Error())
 		return
 	}
 
-	runTests(meqaPath, swaggerFile, &testPlanFile, resultPath, username, password, apitoken, verbose)
+	if _, err := os.Stat(testSuiteFile); os.IsNotExist(err) {
+		fmt.Println("Test suite file is not generated. Use -h to see more options.")
+		return
+	}
+
+	runTests(meqaPath, swaggerFile, &testSuiteFile, resultPath, username, password, apitoken)
 
 }
 
-func runTests(meqaPath *string, swaggerFile *string, testPlanFile *string, resultPath *string,
-	username *string, password *string, apitoken *string, verbose *bool) {
-
-	mqutil.Verbose = *verbose
-
-	if len(*testPlanFile) == 0 {
-		fmt.Println("You must use -p to specify a test plan file. Use -h to see more options.")
-		return
-	}
-
-	if _, err := os.Stat(*testPlanFile); os.IsNotExist(err) {
-		fmt.Printf("can't load test plan file at the following location %s", *testPlanFile)
-		return
-	}
+// Запуск сгенерированных тестов
+func runTests(dataPath *string, swaggerFile *string, testSuiteFile *string, resultPath *string,
+	username *string, password *string, apitoken *string) {
 
 	// load swagger.yml
-	swagger, err := mqswag.CreateSwaggerFromURL(*swaggerFile, *meqaPath)
+	swagger, err := mqswag.CreateSwaggerFromFile(*swaggerFile, *dataPath)
 	if err != nil {
 		mqutil.Logger.Printf("Error: %s", err.Error())
 	}
@@ -119,23 +116,37 @@ func runTests(meqaPath *string, swaggerFile *string, testPlanFile *string, resul
 		swagger.Host = HOST
 	}
 	// load test plan
-	mqplan.Current.Username = *username
-	mqplan.Current.Password = *password
-	mqplan.Current.ApiToken = *apitoken
-	err = mqplan.Current.InitFromFile(*testPlanFile, &mqswag.ObjDB)
+	err = mqplan.CurrentSuite.InitFromFile(*testSuiteFile, &mqswag.ObjDB)
 	if err != nil {
 		mqutil.Logger.Printf("Error loading test plan: %s", err.Error())
 	}
+
+	mqplan.CurrentSuite.Username = *username
+	mqplan.CurrentSuite.Password = *password
+	mqplan.CurrentSuite.ApiToken = *apitoken
 
 	// for testing, set the config to skip verifying https certificates
 	resty.SetTLSClientConfig(&tls.Config{InsecureSkipVerify: true})
 	resty.SetRedirectPolicy(resty.FlexibleRedirectPolicy(15))
 
-	mqplan.Current.ResultCounts = make(map[string]int)
+	mqplan.CurrentSuite.ResultCounts = make(map[string]int)
 
-	for _, testCase := range mqplan.Current.TestList {
+	mqplan.CurrentSuite.StartUp()
+
+	for _, testCase := range mqplan.CurrentSuite.TestList {
 		mqutil.Logger.Printf("\n---Test case path: %s\n", testCase.Name)
-		counts, err := mqplan.Current.Run(testCase.Name, nil)
+		log.Println("========" + testCase.Name + "=============")
+
+		if testCase.Name == "/configuration/set-serial" {
+			continue
+		}
+		if testCase.Name == "/signin" {
+			continue
+		}
+		if testCase.Name == "/signout" {
+			continue
+		}
+		counts, err := mqplan.CurrentSuite.Run(testCase.Name, nil)
 
 		if err != nil {
 			mqutil.Logger.Printf("%s", err.Error())
@@ -143,19 +154,19 @@ func runTests(meqaPath *string, swaggerFile *string, testPlanFile *string, resul
 			mqutil.Logger.Println("=== test success ===")
 		}
 		for k := range counts {
-			mqplan.Current.ResultCounts[k] += counts[k]
+			mqplan.CurrentSuite.ResultCounts[k] += counts[k]
 		}
 		mqutil.Logger.Println(" ")
 	}
 
 	// Выводим список ошибок в консоль
-	if mqplan.Current.ResultCounts["Failed"] < 10 {
-		mqplan.Current.LogErrors()
+	if mqplan.CurrentSuite.ResultCounts["Failed"] < 10 {
+		mqplan.CurrentSuite.LogErrors()
 	}
 	// Выводим суммарный итог по тесту
-	mqplan.Current.PrintSummary()
+	mqplan.CurrentSuite.PrintSummary()
 	// Пишем реузльтирующий файл
 	// TODO: Переделать, самая бесполезная вещь, фактически дуюлирует path.yml
 	os.Remove(*resultPath)
-	mqplan.Current.WriteResultToFile(*resultPath)
+	mqplan.CurrentSuite.WriteResultToFile(*resultPath)
 }

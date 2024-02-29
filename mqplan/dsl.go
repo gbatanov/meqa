@@ -792,6 +792,7 @@ func (t *Test) CopyParent(parentTest *Test) {
 func (t *Test) Run(tc *TestCase) error {
 
 	mqutil.Logger.Print("\n--- test case name: " + t.Name)
+
 	err := t.ResolveParameters(tc)
 	if err != nil {
 		//		fmt.Printf("... Fail\n... %s\n", err.Error())
@@ -799,11 +800,15 @@ func (t *Test) Run(tc *TestCase) error {
 	}
 
 	req := resty.R()
-	if len(tc.ApiToken) > 0 {
-		req.SetAuthToken(tc.ApiToken)
-	} else if len(tc.Username) > 0 {
-		req.SetBasicAuth(tc.Username, tc.Password)
+	if len(tc.plan.ApiToken) > 0 {
+		req.SetAuthToken(tc.plan.ApiToken)
+	} else if len(tc.plan.Username) > 0 {
+		req.SetBasicAuth(tc.plan.Username, tc.plan.Password)
 	}
+
+	req.SetHeader("Referer", "http://192.168.76.95:8000/")
+	req.SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+	req.SetHeader("snaphuntjwttoken", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6ImFkbWluIiwiZXhwIjoxNzA5MjA2MzA1fQ.DNxCXx2juZw7egeNI7TDh4GPlPd359fne64jrnsRGgs")
 
 	path := GetBaseURL(t.db.Swagger) + t.SetRequestParameters(req)
 	var resp *resty.Response

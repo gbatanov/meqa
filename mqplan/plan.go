@@ -3,6 +3,7 @@ package mqplan
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"strings"
@@ -104,7 +105,6 @@ type TestSuite struct {
 	TestList [](*TestCase)
 	db       *mqswag.DB
 	swagger  *mqswag.Swagger
-	Host     string // Если хост не прописан в swagger.yaml
 
 	// global parameters
 	TestParams `yaml:",inline,omitempty" json:",inline,omitempty"`
@@ -120,6 +120,46 @@ type TestSuite struct {
 	ResultCounts map[string]int
 
 	comment string
+}
+
+// Действия до запуска тестов
+func (ts *TestSuite) StartUp() {
+	if len(ts.ApiToken) == 0 {
+		req := resty.R()
+		var resp *resty.Response
+
+		// установить серийник
+		req.SetHeader("Content-Type", "application/json")
+		req.SetBody(map[string]string{"serial": "All-100-DEMO"})
+		path := GetBaseURL(ts.db.Swagger) + "/configuration/set-serial"
+		resp, err := req.Post(path)
+		if err != nil {
+			log.Println(resp)
+			return
+		}
+
+		//req.SetBasicAuth(ts.Username, ts.Password) // Это вариант не прокатывает
+		req.SetHeader("Content-Type", "application/json")
+		req.SetBody(map[string]string{"user": "admin", "pwd": "admin"})
+		path = GetBaseURL(ts.db.Swagger) + "/signin"
+
+		resp, err = req.Post(path)
+		token := ""
+		if err == nil {
+			//			log.Println(resp.Header())
+			header := resp.Header()
+			h, ok := header["Set-Cookie"]
+			if ok {
+				//				log.Println(h)
+				if strings.Contains(h[0], "token=") {
+					token = strings.Replace(h[0], "token=", "", 1)
+					token = strings.Split(token, ";")[0]
+					//					log.Println(token)
+					ts.ApiToken = token
+				}
+			}
+		}
+	}
 }
 
 // Add a new TestCase, returns whether the Case is successfully added.
@@ -323,13 +363,6 @@ func (plan *TestSuite) Run(name string, parentTest *Test) (map[string]int, error
 			continue
 		}
 
-		if test.Name == StartUp {
-			// Apply the parameters to the test suite.
-			(&tc.TestParams).Copy(&test.TestParams)
-			tc.Strict = test.Strict
-			continue
-		}
-
 		dup := test.Duplicate()
 		dup.Strict = tc.Strict
 		if parentTest != nil {
@@ -358,7 +391,7 @@ func (plan *TestSuite) Run(name string, parentTest *Test) (map[string]int, error
 }
 
 // The current global TestSuite
-var Current TestSuite
+var CurrentSuite TestSuite
 
 // TestHistory records the execution result of all the tests
 type TestHistory struct {
