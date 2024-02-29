@@ -16,7 +16,7 @@ import (
 	"gopkg.in/resty.v1"
 )
 
-const VERSION = "v0.1.4"
+const VERSION = "v0.1.5"
 
 const (
 	HOST        = "192.168.76.95:8000"
@@ -41,19 +41,13 @@ func main() {
 	swaggerFile := flag.String("s", SwaggerFile, "the OpenAPI (Swagger) spec file path")
 	verbose := flag.Bool("v", true, "turn on verbose mode")
 	//	resultPath := flag.String("r", ResultFile, "the test result file name")
-	username := flag.String("u", "", "the username for basic HTTP authentication")
-	password := flag.String("w", "", "the password for basic HTTP authentication")
+	username := flag.String("u", "admin", "the username for basic HTTP authentication")
+	password := flag.String("w", "admin", "the password for basic HTTP authentication")
 	apitoken := flag.String("t", "", "the api token for bearer HTTP authentication")
 
 	flag.Usage = func() {
 		fmt.Println("Usage: mqgo [options]")
-		fmt.Println("generate: generate test plans to be used by run command")
 		flag.PrintDefaults()
-	}
-
-	if len(os.Args) < 2 {
-		flag.Usage()
-		os.Exit(1)
 	}
 
 	flag.Parse()
@@ -62,12 +56,14 @@ func main() {
 
 	if len(*swaggerFile) == 0 {
 		fmt.Println("You must use -s option to provide a swagger/openapi yaml spec file. Use -h to see the options")
+		flag.Usage()
 		os.Exit(1)
 	}
 
 	fi, err := os.Stat(*meqaPath)
 	if os.IsNotExist(err) {
 		fmt.Printf("Meqa directory %s doesn't exist.", *meqaPath)
+		flag.Usage()
 		os.Exit(1)
 	}
 	if !fi.Mode().IsDir() {
@@ -83,6 +79,7 @@ func main() {
 
 	if _, err := os.Stat(*swaggerFile); os.IsNotExist(err) {
 		fmt.Printf("can't load swagger file at the following location %s", *swaggerFile)
+		flag.Usage()
 		os.Exit(1)
 	}
 
@@ -150,8 +147,13 @@ func runMeqa(meqaPath *string, swaggerFile *string, testPlanFile *string, result
 			mqplan.Current.ResultCounts[k] += counts[k]
 		}
 	}
+
+	// Выводим список ошибок в консоль
 	mqplan.Current.LogErrors()
+	// Выводим суммарный итог по тесту
 	mqplan.Current.PrintSummary()
+	// Пишем реузльтирующий файл
+	// TODO: Переделать, самая бесполезная вещь, фактически дуюлирует path.yml
 	os.Remove(*resultPath)
 	mqplan.Current.WriteResultToFile(*resultPath)
 }

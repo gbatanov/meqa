@@ -288,18 +288,22 @@ func (t *Test) CompareGetResult(className string, associations map[string]map[st
 			}
 			// TODO: разобраться с маршаллизацией
 			if !compFound {
-				continue
-				/*
-					b, _ := json.Marshal(comp)
-					c, _ := json.Marshal(resultArray[0].(map[string]interface{}))
-					fmt.Printf("... checking GET result against client DB. Result doesn't match query. Fail\n")
-					t.responseError = fmt.Sprintf("Expected:\n%v\nFound:\n%v\n", string(b), string(c))
-					if len(resultArray) > 1 {
-						t.responseError = t.responseError.(string) + fmt.Sprintf("... and %v other objects.\n", len(resultArray)-1)
-					}
-					return mqutil.NewError(mqutil.ErrHttp, fmt.Sprintf("result returned doesn't contain query parameters:\n%s\n",
-						string(b)))
-				*/
+				b, err := json.Marshal(comp)
+				if err != nil {
+					continue
+				}
+				c, err := json.Marshal(resultArray[0].(map[string]interface{}))
+				if err != nil {
+					continue
+				}
+
+				fmt.Printf("... checking GET result against client DB. Result doesn't match query. Fail\n")
+				t.responseError = fmt.Sprintf("Expected:\n%v\nFound:\n%v\n", string(b), string(c))
+				if len(resultArray) > 1 {
+					t.responseError = t.responseError.(string) + fmt.Sprintf("... and %v other objects.\n", len(resultArray)-1)
+				}
+				return mqutil.NewError(mqutil.ErrHttp, fmt.Sprintf("result returned doesn't contain query parameters:\n%s\n",
+					string(b)))
 
 			}
 
@@ -419,19 +423,31 @@ func (t *Test) GetParam(path []string) interface{} {
 // ProcessResult decodes the response from the server into a result array
 func (t *Test) ProcessResult(resp *resty.Response) error {
 	if t.err != nil {
-		log.Printf("REST call hit the following error: %s\n", t.err.Error())
+		//		log.Printf("REST call hit the following error: %s\n", t.err.Error())
 		return t.err
 	}
 
-	// useDefaultSpec := true
+	useSchemaMatch := false
+	useMeqaTags := false
+	useDefaultSpec := true
 	t.resp = resp
 	status := resp.StatusCode()
 	var respSpec *spec.Response
 	if t.op.Responses != nil {
-		respObject, ok := t.op.Responses.StatusCodeResponses[status]
+		// Проверим, вписан ли статус 200 в responses
+		respObject, ok := t.op.Responses.StatusCodeResponses[200]
+		if !ok {
+			// Добавим искусственно
+			specResp := spec.Response{}
+			specResp.Schema = &spec.Schema{}
+			specResp.Schema.Type = spec.StringOrArray{"object"}
+			specResp.Description = "Success"
+			t.op.Responses.StatusCodeResponses[200] = specResp
+		}
+		respObject, ok = t.op.Responses.StatusCodeResponses[status]
 		if ok {
 			respSpec = &respObject
-			// useDefaultSpec = false
+			useDefaultSpec = false
 		} else {
 			respSpec = t.op.Responses.Default
 		}
@@ -453,12 +469,16 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 	// Before returning from this function, we should set the test's expect value to that
 	// of actual result. This allows us to print out a result report that is the same format
 	// as the test plan file, but with the expect value that reflects the current ground truth.
+	// При таком подходе ожидаемый результат всегда будет совпадать с полученным.
 	setExpect := func() {
-		t.Expect = make(map[string]interface{})
-		t.Expect[ExpectStatus] = status
-		if resultObj != nil {
-			t.Expect[ExpectBody] = resultObj
-		}
+		// Отключаю до переработки логики
+		/*
+			t.Expect = make(map[string]interface{})
+			t.Expect[ExpectStatus] = status
+			if resultObj != nil {
+				t.Expect[ExpectBody] = resultObj
+			}
+		*/
 	}
 
 	if mqutil.Verbose {
@@ -466,25 +486,25 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 	}
 	// success based on return status
 	success := (status >= 200 && status < 300)
-	/*
-		// TODO: Добавить тэги в генератор
-			tag := mqswag.GetMeqaTag(respSpec.Description)
-			if tag != nil && tag.Flags&mqswag.FlagFail != 0 {
-				success = false
-			}
-	*/
+
+	// TODO: Добавить тэги в генератор???
+	tag := mqswag.GetMeqaTag(respSpec.Description)
+	if tag != nil && tag.Flags&mqswag.FlagFail != 0 {
+		success = false
+	}
+
 	testSuccess := success
-	/*
-		var expectedStatus interface{} = "success"
-		if t.Expect != nil && t.Expect[ExpectStatus] != nil {
-			expectedStatus = t.Expect[ExpectStatus]
-			if expectedStatus == "fail" {
-				testSuccess = !success
-			} else if expectedStatusNum, ok := expectedStatus.(int); ok {
-				testSuccess = (expectedStatusNum == status)
-			}
+
+	var expectedStatus interface{} = "success"
+	if t.Expect != nil && t.Expect[ExpectStatus] != nil {
+		expectedStatus = t.Expect[ExpectStatus]
+		if expectedStatus == "fail" {
+			testSuccess = !success
+		} else if expectedStatusNum, ok := expectedStatus.(int); ok {
+			testSuccess = (expectedStatusNum == status)
 		}
-	*/
+	}
+
 	greenSuccess := fmt.Sprintf("%vSuccess%v", mqutil.GREEN, mqutil.END)
 	redFail := fmt.Sprintf("%vFail%v", mqutil.RED, mqutil.END)
 	yellowFail := fmt.Sprintf("%vFail%v", mqutil.YELLOW, mqutil.END)
@@ -514,7 +534,7 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 	// Check if the response obj and respSchema match
 	collection := make(map[string][]interface{})
 	objMatchesSchema := false
-	if resultObj != nil && respSchema != nil {
+	if useSchemaMatch && resultObj != nil && respSchema != nil {
 		fmt.Printf("... verifying response against openapi schema. ")
 		err := respSchema.Parses("", resultObj, collection, true, t.db.Swagger)
 		if err != nil {
@@ -531,36 +551,37 @@ func (t *Test) ProcessResult(resp *resty.Response) error {
 
 			// We ignore this if the response is success, and the spec we used is the default. This is a strong
 			// indicator that the author didn't spec out all the success cases.
-			/* Don't treat this as a hard failure for now. Too common.
+			//Don't treat this as a hard failure for now. Too common.
 			if !(useDefaultSpec && success) {
 				setExpect()
 				return err
 			}
-			*/
+
 		} else {
 			fmt.Printf("%v\n", greenSuccess)
 		}
 	}
-	if resultObj != nil && len(collection) == 0 && t.tag != nil && len(t.tag.Class) > 0 {
-		// try to resolve collection from the hint on the operation's description field.
-		classSchema := t.db.GetSchema(t.tag.Class)
-		if classSchema != nil {
-			if classSchema.Matches(resultObj, t.db.Swagger) {
-				collection[t.tag.Class] = append(collection[t.tag.Class], resultObj)
-			} else {
-				callback := func(value map[string]interface{}) error {
-					if classSchema.Matches(value, t.db.Swagger) {
-						collection[t.tag.Class] = append(collection[t.tag.Class], value)
+	if useMeqaTags {
+		if resultObj != nil && len(collection) == 0 && t.tag != nil && len(t.tag.Class) > 0 {
+			// try to resolve collection from the hint on the operation's description field.
+			classSchema := t.db.GetSchema(t.tag.Class)
+			if classSchema != nil {
+				if classSchema.Matches(resultObj, t.db.Swagger) {
+					collection[t.tag.Class] = append(collection[t.tag.Class], resultObj)
+				} else {
+					callback := func(value map[string]interface{}) error {
+						if classSchema.Matches(value, t.db.Swagger) {
+							collection[t.tag.Class] = append(collection[t.tag.Class], value)
+						}
+						return nil
 					}
-					return nil
+					mqutil.IterateMapsInInterface(resultObj, callback)
 				}
-				mqutil.IterateMapsInInterface(resultObj, callback)
 			}
 		}
 	}
-
 	// Log some non-fatal errors.
-	if respSchema != nil {
+	if useSchemaMatch && respSchema != nil {
 		if len(respBody()) > 0 {
 			if resultObj == nil && !respSchema.Type.Contains(gojsonschema.TYPE_STRING) {
 				specBytes, _ := json.MarshalIndent(respSpec, "", "    ")
@@ -809,7 +830,7 @@ func (t *Test) Run(tc *TestSuite) error {
 	default:
 		return mqutil.NewError(mqutil.ErrInvalid, fmt.Sprintf("Unknown method in test %s: %v", t.Name, t.Method))
 	}
-	log.Println(path, resp)
+	//	log.Println(path, resp)
 	t.stopTime = time.Now()
 	log.Printf("... call completed: %f seconds\n", t.stopTime.Sub(t.startTime).Seconds())
 

@@ -368,10 +368,12 @@ func CollectResponseDependencies(responses *spec.Responses, swagger *Swagger, da
 	dep.Default = make(map[string]interface{}) // We don't assume by default anything so we throw Default away.
 	defer func() { dep.Default = nil }()
 	for respCode, respSpec := range responses.StatusCodeResponses {
-		collected := dep.CollectFromTag(GetMeqaTag(respSpec.Description))
-		if len(collected) > 0 {
-			continue
-		}
+
+		// meqa tag пока не использую
+		//		collected := dep.CollectFromTag(GetMeqaTag(respSpec.Description))
+		//		if len(collected) > 0 {
+		//			continue
+		//		}
 		if respSpec.Schema != nil && respCode >= 200 && respCode < 300 {
 			err := CollectSchemaDependencies((*Schema)(respSpec.Schema), swagger, dag, dep)
 			if err != nil {
